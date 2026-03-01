@@ -18,16 +18,18 @@ import {
   Sparkles,
   Send,
   AlertTriangle,
-  Loader2
+  Loader2,
+  Settings,
+  Key
 } from 'lucide-react';
 import { TIPS, CATEGORIES, Tip } from './data/tips';
 import { GoogleGenAI } from "@google/genai";
 import Markdown from 'react-markdown';
 
 // AI initialization
-const getAi = () => {
+const getAi = (customKey?: string) => {
   try {
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = customKey || process.env.GEMINI_API_KEY;
     if (!apiKey || apiKey === "undefined") {
       console.warn("GEMINI_API_KEY is missing or undefined.");
       return null;
@@ -130,13 +132,16 @@ function Calculator() {
 }
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'signals' | 'rules' | 'calculator'>('signals');
+  const [activeTab, setActiveTab] = useState<'signals' | 'rules' | 'calculator' | 'settings'>('signals');
   const [selectedCategory, setSelectedCategory] = useState<string>("All");
   const [searchQuery, setSearchQuery] = useState("");
   const [completedTips, setCompletedTips] = useState<number[]>([]);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [selectedTip, setSelectedTip] = useState<Tip | null>(null);
+
+  // API Key State
+  const [storedApiKey, setStoredApiKey] = useState<string>("");
 
   // AI Advisor State
   const [aiInput, setAiInput] = useState("");
@@ -145,13 +150,23 @@ export default function App() {
   const [hasInitialScan, setHasInitialScan] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Load progress from local storage
+  // Load progress and API key from local storage
   useEffect(() => {
-    const saved = localStorage.getItem('crypto-bible-progress');
-    if (saved) {
-      setCompletedTips(JSON.parse(saved));
+    const savedProgress = localStorage.getItem('crypto-bible-progress');
+    if (savedProgress) {
+      setCompletedTips(JSON.parse(savedProgress));
+    }
+
+    const savedKey = localStorage.getItem('gemini-api-key');
+    if (savedKey) {
+      setStoredApiKey(savedKey);
     }
   }, []);
+
+  const saveApiKey = (key: string) => {
+    setStoredApiKey(key);
+    localStorage.setItem('gemini-api-key', key);
+  };
 
   const handleAiConsultation = async (eOrInput?: FormEvent | string) => {
     let query = aiInput;
@@ -168,9 +183,9 @@ export default function App() {
     setAiResponse(null);
 
     try {
-      const ai = getAi();
+      const ai = getAi(storedApiKey);
       if (!ai) {
-        setAiResponse("Errore: Chiave API non configurata correttamente su Render. Controlla le impostazioni del sito.");
+        setAiResponse("Errore: Chiave API non configurata. Vai nelle Impostazioni per inserirla.");
         setIsAiLoading(false);
         return;
       }
@@ -420,6 +435,14 @@ export default function App() {
               Trading Bible
             </button>
 
+            <button 
+              onClick={() => { setActiveTab('settings'); setIsMenuOpen(false); }}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${activeTab === 'settings' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200' : 'hover:bg-white text-gray-600'}`}
+            >
+              <Settings className="w-4 h-4" />
+              Impostazioni
+            </button>
+
             {activeTab === 'rules' && (
               <>
                 <div className="h-px bg-black/5 my-4 mx-4" />
@@ -453,7 +476,71 @@ export default function App() {
 
           {/* Main Content Area */}
           <div className="flex-1">
-            {activeTab === 'calculator' ? (
+            {activeTab === 'settings' ? (
+              <motion.div
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                className="max-w-xl mx-auto"
+              >
+                <div className="bg-white rounded-3xl border border-black/5 overflow-hidden shadow-sm">
+                  <div className="p-6 border-b border-black/5 bg-slate-50">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-slate-900 rounded-xl flex items-center justify-center shadow-lg">
+                        <Settings className="text-white w-6 h-6" />
+                      </div>
+                      <div>
+                        <h2 className="text-xl font-bold tracking-tight">Impostazioni</h2>
+                        <p className="text-xs text-slate-500 font-medium">Configurazione Terminale</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="p-8 space-y-8">
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Key className="w-4 h-4 text-indigo-600" />
+                        <h3 className="text-sm font-bold uppercase tracking-widest text-slate-400">Gemini API Key</h3>
+                      </div>
+                      <p className="text-xs text-slate-600 leading-relaxed">
+                        Inserisci la tua chiave API di Google Gemini per abilitare il generatore di segnali. 
+                        La chiave verrà salvata localmente nel tuo browser.
+                      </p>
+                      <div className="relative">
+                        <input 
+                          type="password"
+                          placeholder="Incolla qui la tua API Key..."
+                          value={storedApiKey}
+                          onChange={(e) => saveApiKey(e.target.value)}
+                          className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none font-mono"
+                        />
+                      </div>
+                      <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-100 rounded-xl">
+                        <Info className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                        <p className="text-[10px] text-amber-800">
+                          Puoi ottenere una chiave gratuita su <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="underline font-bold">Google AI Studio</a>.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="pt-6 border-t border-slate-100">
+                      <h3 className="text-sm font-bold uppercase tracking-widest text-slate-400 mb-4">Stato Sistema</h3>
+                      <div className="space-y-3">
+                        <div className="flex justify-between items-center text-sm">
+                          <span className="text-slate-600">Connessione AI:</span>
+                          <span className={`font-bold ${storedApiKey ? 'text-emerald-600' : 'text-amber-600'}`}>
+                            {storedApiKey ? 'Configurata' : 'Mancante'}
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center text-sm">
+                          <span className="text-slate-600">Storage Locale:</span>
+                          <span className="text-emerald-600 font-bold">Attivo</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            ) : activeTab === 'calculator' ? (
               <motion.div
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
