@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef, FormEvent } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
   TrendingUp, 
   ShieldCheck, 
@@ -24,7 +24,20 @@ import { TIPS, CATEGORIES, Tip } from './data/tips';
 import { GoogleGenAI } from "@google/genai";
 import Markdown from 'react-markdown';
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+// AI initialization
+const getAi = () => {
+  try {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey || apiKey === "undefined") {
+      console.warn("GEMINI_API_KEY is missing or undefined.");
+      return null;
+    }
+    return new GoogleGenAI({ apiKey });
+  } catch (e) {
+    console.error("Failed to initialize GoogleGenAI:", e);
+    return null;
+  }
+};
 
 function Calculator() {
   const [capital, setCapital] = useState<number>(1000);
@@ -155,6 +168,12 @@ export default function App() {
     setAiResponse(null);
 
     try {
+      const ai = getAi();
+      if (!ai) {
+        setAiResponse("Errore: Chiave API non configurata correttamente su Render. Controlla le impostazioni del sito.");
+        setIsAiLoading(false);
+        return;
+      }
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
         contents: `Sei "Crypto Signal Pro", un generatore di segnali di trading professionale. Oggi è il 1 Marzo 2026. Il tuo stile è DIRETTO, OPERATIVO e senza ambiguità. Il tuo obiettivo è dire all'utente ESATTAMENTE cosa fare oggi.
