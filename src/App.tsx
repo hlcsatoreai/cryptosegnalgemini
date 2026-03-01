@@ -30,10 +30,11 @@ import Markdown from 'react-markdown';
 const getAi = (customKey?: string) => {
   try {
     const apiKey = customKey || process.env.GEMINI_API_KEY;
-    if (!apiKey || apiKey === "undefined") {
-      console.warn("GEMINI_API_KEY is missing or undefined.");
+    if (!apiKey || apiKey === "undefined" || apiKey === "") {
+      console.warn("GEMINI_API_KEY is missing or empty.");
       return null;
     }
+    console.log("Inizializzazione AI con chiave:", customKey ? "Custom (LocalStorage)" : "Environment (Render)");
     return new GoogleGenAI({ apiKey });
   } catch (e) {
     console.error("Failed to initialize GoogleGenAI:", e);
@@ -164,8 +165,10 @@ export default function App() {
   }, []);
 
   const saveApiKey = (key: string) => {
-    setStoredApiKey(key);
-    localStorage.setItem('gemini-api-key', key);
+    const trimmedKey = key.trim();
+    setStoredApiKey(trimmedKey);
+    localStorage.setItem('gemini-api-key', trimmedKey);
+    console.log("API Key salvata localmente.");
   };
 
   const handleAiConsultation = async (eOrInput?: FormEvent | string) => {
@@ -183,15 +186,16 @@ export default function App() {
     setAiResponse(null);
 
     try {
+      console.log("Inizio consultazione AI...");
       const ai = getAi(storedApiKey);
       if (!ai) {
+        console.error("AI non inizializzata: chiave mancante.");
         setAiResponse("Errore: Chiave API non configurata. Vai nelle Impostazioni per inserirla.");
         setIsAiLoading(false);
         return;
       }
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: `Sei "Crypto Signal Pro", un generatore di segnali di trading professionale. Oggi è il 1 Marzo 2026. Il tuo stile è DIRETTO, OPERATIVO e senza ambiguità. Il tuo obiettivo è dire all'utente ESATTAMENTE cosa fare oggi.
+
+      const prompt = `Sei "Crypto Signal Pro", un generatore di segnali di trading professionale. Oggi è il 1 Marzo 2026. Il tuo stile è DIRETTO, OPERATIVO e senza ambiguità. Il tuo obiettivo è dire all'utente ESATTAMENTE cosa fare oggi.
         
         UNIVERSO DI ANALISI:
         - Top 100 crypto (BTC, ETH, SOL, ecc.)
@@ -230,6 +234,7 @@ export default function App() {
         - 💪 Confidenza: [█████████░] XX%
         - ⚠️ Rischio: [⭐⭐⭐]
         - 🔥 Potenziale: [█████████░] XX%
+        - 🌐 Fonte: Google Search
         
         #### 📋 ANALISI COMPLETA:
         [2-3 righe di analisi professionale]
@@ -286,16 +291,30 @@ export default function App() {
         ---
         **⚠️ DISCLAIMER:** [Testo standard]
         
-        Richiesta Utente: "${query || "Genera il report segnali di oggi"}"`,
-        config: {
-          tools: [{ googleSearch: {} }]
-        }
-      });
+        Richiesta Utente: "${query || "Genera il report segnali di oggi"}"`;
+
+      let response;
+      try {
+        response = await ai.models.generateContent({
+          model: "gemini-3-flash-preview",
+          contents: prompt,
+          config: {
+            tools: [{ googleSearch: {} }]
+          }
+        });
+      } catch (searchError) {
+        console.warn("Search tool failed, retrying without it:", searchError);
+        response = await ai.models.generateContent({
+          model: "gemini-3-flash-preview",
+          contents: prompt
+        });
+      }
 
       setAiResponse(response.text || "Analisi non disponibile al momento.");
-    } catch (error) {
+    } catch (error: any) {
       console.error("AI Error:", error);
-      setAiResponse("Errore durante la consultazione dell'AI. Riprova più tardi.");
+      const errorMessage = error?.message || "Errore sconosciuto";
+      setAiResponse(`Errore: ${errorMessage}`);
     } finally {
       setIsAiLoading(false);
     }
@@ -303,11 +322,11 @@ export default function App() {
 
   // Auto-trigger initial scan
   useEffect(() => {
-    if (activeTab === 'signals' && !hasInitialScan && !aiResponse) {
+    if (activeTab === 'signals' && !hasInitialScan && !aiResponse && (storedApiKey || process.env.GEMINI_API_KEY)) {
       handleAiConsultation("Genera il report segnali di oggi");
       setHasInitialScan(true);
     }
-  }, [activeTab]);
+  }, [activeTab, storedApiKey, hasInitialScan, aiResponse]);
 
   const toggleTip = (id: number) => {
     const newCompleted = completedTips.includes(id)
@@ -722,9 +741,39 @@ export default function App() {
                       </div>
                     </div>
 
-                    <AnimatePresence mode="wait">
-                      {aiResponse && (
-                        <motion.div 
+                      <AnimatePresence mode="wait">
+                        {aiResponse && aiResponse.startsWith("Errore:") ? (
+                          <motion.div 
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="mt-8 bg-red-50 border border-red-100 rounded-3xl p-6 flex flex-col items-center text-center gap-4"
+                          >
+                            <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+                              <AlertTriangle className="text-red-600 w-6 h-6" />
+                            </div>
+                            <div>
+                              <h4 className="font-bold text-red-900 mb-1">Errore di Connessione AI</h4>
+                              <p className="text-sm text-red-700 leading-relaxed max-w-md">
+                                {aiResponse}
+                              </p>
+                            </div>
+                            <div className="flex gap-3">
+                              <button 
+                                onClick={() => handleAiConsultation(aiInput || "Genera il report segnali di oggi")}
+                                className="px-4 py-2 bg-red-600 text-white rounded-xl text-xs font-bold hover:bg-red-700 transition-all"
+                              >
+                                Riprova
+                              </button>
+                              <button 
+                                onClick={() => setActiveTab('settings')}
+                                className="px-4 py-2 bg-white border border-red-200 text-red-600 rounded-xl text-xs font-bold hover:bg-red-50 transition-all"
+                              >
+                                Controlla API Key
+                              </button>
+                            </div>
+                          </motion.div>
+                        ) : aiResponse && (
+                          <motion.div 
                           initial={{ opacity: 0, y: 10 }}
                           animate={{ opacity: 1, y: 0 }}
                           className="mt-8 bg-slate-900 text-slate-100 rounded-3xl border border-slate-800 relative shadow-2xl overflow-hidden"
